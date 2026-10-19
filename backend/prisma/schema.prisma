@@ -19,6 +19,14 @@ enum TaskStatus {
   COMPLETED
 }
 
+enum TaskActivityAction {
+  CREATED
+  UPDATED
+  STATUS_CHANGED
+  COMPLETED
+  REASSIGNED
+}
+
 model User {
   id           String          @id @default(cuid())
   email        String          @unique
@@ -32,6 +40,7 @@ model User {
   avatarUrl    String?
   tasks        Task[]          @relation("TaskOwner")
   createdTasks Task[]          @relation("TaskCreator")
+  taskActivities TaskActivity[] @relation("TaskActivityActor")
   sessions     RefreshSession[]
   notifications Notification[]
   createdAt    DateTime        @default(now())
@@ -85,12 +94,27 @@ model Task {
   user        User       @relation("TaskOwner", fields: [userId], references: [id], onDelete: Cascade)
   createdById String?
   createdBy   User?      @relation("TaskCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  activities  TaskActivity[]
   dueAt       DateTime?
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 
   @@index([userId, status])
   @@index([userId, createdAt])
+}
+
+model TaskActivity {
+  id        String             @id @default(cuid())
+  taskId    String
+  task      Task               @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  actorId   String?
+  actor     User?              @relation("TaskActivityActor", fields: [actorId], references: [id], onDelete: SetNull)
+  action    TaskActivityAction
+  summary   String
+  createdAt DateTime           @default(now())
+
+  @@index([taskId, createdAt])
+  @@index([actorId, createdAt])
 }
 
 model RefreshSession {
