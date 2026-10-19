@@ -1,6 +1,7 @@
 node_modules/
 dist/
 coverage/
+.jest-cache/
 *.log
 *.db
 *.db-journal

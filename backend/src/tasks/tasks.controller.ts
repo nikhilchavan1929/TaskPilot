@@ -17,6 +17,11 @@ export class TasksController {
     return this.tasksService.list(user, query);
   }
 
+  @Get('summary')
+  summary(@CurrentUser() user: AuthenticatedUser) {
+    return this.tasksService.summary(user);
+  }
+
   @Post()
   create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateTaskDto) {
     return this.tasksService.create(user, dto);

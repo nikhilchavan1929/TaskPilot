@@ -7,6 +7,7 @@ import type { CreateTaskDto } from './dto/create-task.dto';
 import type { ListTasksQueryDto } from './dto/list-tasks-query.dto';
 import type { UpdateTaskDto } from './dto/update-task.dto';
 import { NotificationsService } from '../notifications/notifications.service';
+import { Prisma, TaskStatus } from '../generated/prisma/client';
 
 @Injectable()
 export class TasksService {
@@ -17,18 +18,8 @@ export class TasksService {
   ) {}
 
   async list(user: AuthenticatedUser, query: ListTasksQueryDto) {
-    const ability = await this.abilityFactory.createForUser(user);
-    const assignedTaskSubject = subject('Task', { userId: user.id }) as unknown as 'Task';
-    const createdTaskSubject = subject('Task', { createdById: user.id, userId: '' }) as unknown as 'Task';
-    if (!ability.can('read', assignedTaskSubject) && !ability.can('read', createdTaskSubject)) {
-      throw new ForbiddenException();
-    }
-
-    const visibilityFilter = user.role === 'ADMIN'
-      ? null
-      : user.role === 'USER' && !user.customRoleId
-        ? { userId: user.id }
-        : { OR: [{ createdById: user.id }, { userId: user.id }] };
+    await this.assertCanReadTasks(user);
+    const visibilityFilter = this.taskVisibilityFilter(user);
     const filters = [
       ...(visibilityFilter ? [visibilityFilter] : []),
       ...(query.status ? [{ status: query.status }] : []),
@@ -51,6 +42,47 @@ export class TasksService {
       this.prisma.task.count({ where }),
     ]);
     return { items, page: query.page, limit: query.limit, total, pageCount: Math.ceil(total / query.limit) };
+  }
+
+  async summary(user: AuthenticatedUser) {
+    await this.assertCanReadTasks(user);
+    const where = this.taskVisibilityFilter(user);
+    const [groupedCounts, recentTasks] = await Promise.all([
+      this.prisma.task.groupBy({ by: ['status'], where, _count: { _all: true } }),
+      this.prisma.task.findMany({
+        where,
+        include: { user: { select: { id: true, email: true, firstName: true, lastName: true } } },
+        orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+        take: 5,
+      }),
+    ]);
+    const counts = Object.fromEntries(
+      Object.values(TaskStatus).map((status) => [
+        status,
+        groupedCounts.find((entry) => entry.status === status)?._count._all ?? 0,
+      ]),
+    ) as Record<TaskStatus, number>;
+
+    return {
+      total: Object.values(counts).reduce((sum, count) => sum + count, 0),
+      counts,
+      recentTasks,
+    };
+  }
+
+  private async assertCanReadTasks(user: AuthenticatedUser): Promise<void> {
+    const ability = await this.abilityFactory.createForUser(user);
+    const assignedTaskSubject = subject('Task', { userId: user.id }) as unknown as 'Task';
+    const createdTaskSubject = subject('Task', { createdById: user.id, userId: '' }) as unknown as 'Task';
+    if (!ability.can('read', assignedTaskSubject) && !ability.can('read', createdTaskSubject)) {
+      throw new ForbiddenException();
+    }
+  }
+
+  private taskVisibilityFilter(user: AuthenticatedUser): Prisma.TaskWhereInput {
+    if (user.role === 'ADMIN') return {};
+    if (user.role === 'USER' && !user.customRoleId) return { userId: user.id };
+    return { OR: [{ createdById: user.id }, { userId: user.id }] };
   }
 
   async create(user: AuthenticatedUser, dto: CreateTaskDto) {
