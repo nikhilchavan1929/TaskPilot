@@ -26,6 +26,31 @@ function isAuthEndpoint(url: string | undefined): boolean {
   return Boolean(url && /\/auth\/(register|login|refresh|logout)(\?|$)/.test(url));
 }
 
+function tokenFromConfig(config: InternalAxiosRequestConfig): string | null {
+  const authorization = config.headers.Authorization;
+  return typeof authorization === 'string' && authorization.startsWith('Bearer ')
+    ? authorization.slice('Bearer '.length)
+    : null;
+}
+
+export function applyRefreshResult(requestToken: string | null, refreshedToken: string): string | null {
+  const currentToken = getAccessToken();
+  if (currentToken !== requestToken) return currentToken;
+  setAccessToken(refreshedToken);
+  return refreshedToken;
+}
+
+export function applyRefreshFailure(requestToken: string | null): string | null {
+  const currentToken = getAccessToken();
+  if (currentToken !== requestToken) return currentToken;
+  if (!requestToken) return null;
+  window.dispatchEvent(new CustomEvent('todo:session-expired', {
+    detail: { accessToken: requestToken },
+  }));
+  setAccessToken(null);
+  return null;
+}
+
 apiClient.interceptors.request.use((config) => {
   const token = getAccessToken();
   if (token) config.headers.Authorization = `Bearer ${token}`;
@@ -41,17 +66,13 @@ apiClient.interceptors.response.use(
     }
 
     config._retried = true;
+    const requestToken = tokenFromConfig(config);
     refreshInFlight ??= refreshClient
       .post<{ accessToken: string }>('/auth/refresh')
       .then(({ data }) => {
-        setAccessToken(data.accessToken);
-        return data.accessToken;
+        return applyRefreshResult(requestToken, data.accessToken);
       })
-      .catch(() => {
-        setAccessToken(null);
-        window.dispatchEvent(new Event('todo:session-expired'));
-        return null;
-      })
+      .catch(() => applyRefreshFailure(requestToken))
       .finally(() => {
         refreshInFlight = null;
       });

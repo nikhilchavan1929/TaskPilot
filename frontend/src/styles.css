@@ -168,6 +168,7 @@ h2 { margin-bottom: 20px; font-size: 20px; letter-spacing: -0.02em; }
 .dashboard-page { display: grid; gap: 20px; }
 .dashboard-heading { margin-bottom: 2px; }
 .dashboard-heading h1 { margin-bottom: 10px; }
+.dashboard-heading-actions { display: flex; align-items: center; gap: 10px; }
 .dashboard-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
 .metric-card { display: grid; gap: 9px; padding: 22px; }
 .metric-card > span { color: #687483; font-size: 13px; font-weight: 600; }

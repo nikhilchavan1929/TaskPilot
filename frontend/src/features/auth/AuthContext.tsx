@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from 'react';
 import { apiClient } from '../../shared/api/client';
-import { setAccessToken } from '../../shared/api/access-token';
+import { getAccessToken, setAccessToken } from '../../shared/api/access-token';
 import type { AuthResponse, AuthUser } from '../../shared/api/types';
 
 type AuthStatus = 'checking' | 'authenticated' | 'anonymous';
@@ -22,8 +22,8 @@ interface Credentials {
 interface AuthContextValue {
   user: AuthUser | null;
   status: AuthStatus;
-  login: (credentials: Credentials) => Promise<void>;
-  register: (credentials: Credentials) => Promise<void>;
+  login: (credentials: Credentials) => Promise<AuthUser | null>;
+  register: (credentials: Credentials) => Promise<AuthUser | null>;
   logout: () => Promise<void>;
   updateProfile: (profile: Pick<AuthUser, 'firstName' | 'lastName' | 'avatarUrl'>) => void;
 }
@@ -68,7 +68,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       else clearAuth();
     });
 
-    const onExpired = () => clearAuth();
+    const onExpired = (event: Event) => {
+      const expiredToken = (event as CustomEvent<{ accessToken?: string }>).detail?.accessToken;
+      if (!expiredToken || getAccessToken() !== expiredToken) return;
+      ++authOperation.current;
+      clearAuth();
+    };
     window.addEventListener('todo:session-expired', onExpired);
     return () => {
       active = false;
@@ -79,19 +84,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(async (credentials: Credentials) => {
     const operation = ++authOperation.current;
     const { data } = await apiClient.post<AuthResponse>('/auth/login', credentials);
-    if (operation === authOperation.current) applyAuth(data);
+    if (operation !== authOperation.current) return null;
+    applyAuth(data);
+    return data.user;
   }, [applyAuth]);
 
   const register = useCallback(async (credentials: Credentials) => {
     const operation = ++authOperation.current;
     const { data } = await apiClient.post<AuthResponse>('/auth/register', credentials);
-    if (operation === authOperation.current) applyAuth(data);
+    if (operation !== authOperation.current) return null;
+    applyAuth(data);
+    return data.user;
   }, [applyAuth]);
 
   const logout = useCallback(async () => {
     ++authOperation.current;
-    clearAuth();
-    await apiClient.post('/auth/logout');
+    try {
+      await apiClient.post('/auth/logout');
+    } finally {
+      clearAuth();
+    }
   }, [clearAuth]);
 
   const updateProfile = useCallback((profile: Pick<AuthUser, 'firstName' | 'lastName' | 'avatarUrl'>) => {

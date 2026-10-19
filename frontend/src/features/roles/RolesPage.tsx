@@ -23,8 +23,12 @@ export function RolesPage() {
   const [error, setError] = useState('');
 
   async function loadRoles() {
-    const { data } = await apiClient.get<RoleRecord[]>('/roles');
-    setRoles(data);
+    try {
+      const { data } = await apiClient.get<RoleRecord[]>('/roles');
+      setRoles(data);
+    } catch {
+      setError('Role changes were saved, but the role list could not be refreshed. Retry by reloading the page.');
+    }
   }
 
   useEffect(() => {
@@ -46,21 +50,28 @@ export function RolesPage() {
     const permissions: AbilityRule[] = permissionChoices
       .filter((permission) => selected.includes(`${permission.action}:${permission.subject}`))
       .map(({ action, subject }) => ({ action, subject }));
+    let created = false;
     try {
       await apiClient.post('/roles', { name: name.trim(), description, permissions });
       setName('');
       setDescription('');
       setSelected([]);
-      await loadRoles();
+      created = true;
     } catch {
       setError('Could not create the role. Choose a unique name and at least one permission.');
     } finally {
       setSaving(false);
     }
+    if (created) await loadRoles();
   }
 
   async function deleteRole(role: RoleRecord) {
     if (role.isSystem) return;
+    const assignedUsers = role.assignedUsers ?? 0;
+    const assignmentNote = assignedUsers > 0
+      ? ` This role is assigned to ${assignedUsers} user${assignedUsers === 1 ? '' : 's'}, who will lose its permissions.`
+      : '';
+    if (!window.confirm(`Delete the role '${role.name}'?${assignmentNote}`)) return;
     setError('');
     try {
       await apiClient.delete(`/roles/${role.id}`);

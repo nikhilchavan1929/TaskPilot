@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { isAxiosError } from 'axios';
 import { apiClient } from '../../shared/api/client';
 import type { UserProfile } from '../../shared/api/types';
 import { useAuth } from '../auth/AuthContext';
@@ -38,17 +39,21 @@ export function ProfilePage() {
         avatarUrl: profile.avatarUrl || null,
       });
       setProfile(data);
-      updateProfile(data);
+      updateProfile({ firstName: data.firstName, lastName: data.lastName, avatarUrl: data.avatarUrl });
       setNotice('Profile updated.');
-    } catch {
-      setError('Could not save your profile. Check the image URL and try again.');
+    } catch (error) {
+      if (isAxiosError<{ message?: string | string[] }>(error)) {
+        const message = error.response?.data?.message;
+        setError(Array.isArray(message) ? message.join(' ') : typeof message === 'string' ? message : 'Could not save your profile. Check each field and try again.');
+      } else setError('Could not save your profile. Check your connection and try again.');
     } finally {
       setSaving(false);
     }
   }
 
   function change(field: 'firstName' | 'lastName' | 'birthDate' | 'avatarUrl', value: string) {
-    setProfile((current) => current ? { ...current, [field]: value || null } : current);
+    const nextValue = field === 'firstName' || field === 'lastName' ? value : value || null;
+    setProfile((current) => current ? { ...current, [field]: nextValue } : current);
   }
 
   return (

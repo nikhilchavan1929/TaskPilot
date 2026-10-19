@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { apiClient } from '../../shared/api/client';
 import type { TaskDashboardSummary, TaskStatus } from '../../shared/api/types';
@@ -23,23 +23,31 @@ function displayName(firstName?: string | null, email?: string): string {
 export function DashboardPage() {
   const { user } = useAuth();
   const [summary, setSummary] = useState<TaskDashboardSummary | null>(null);
+  const requestSequence = useRef(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   const loadSummary = useCallback(async () => {
+    const sequence = ++requestSequence.current;
     setLoading(true);
     setError('');
     try {
       const { data } = await apiClient.get<TaskDashboardSummary>('/tasks/summary');
-      setSummary(data);
+      if (sequence === requestSequence.current) setSummary(data);
     } catch {
-      setError('Could not load your task overview. Try again.');
+      if (sequence === requestSequence.current) {
+        setSummary(null);
+        setError('Could not load your task overview. Try again.');
+      }
     } finally {
-      setLoading(false);
+      if (sequence === requestSequence.current) setLoading(false);
     }
   }, []);
 
-  useEffect(() => { void loadSummary(); }, [loadSummary]);
+  useEffect(() => {
+    void loadSummary();
+    return () => { requestSequence.current += 1; };
+  }, [loadSummary]);
 
   const counts = summary?.counts ?? emptyCounts;
   const completionPercent = summary?.total
@@ -54,22 +62,22 @@ export function DashboardPage() {
           <h1>Hello, {displayName(user?.firstName, user?.email)}.</h1>
           <p className="muted-copy">Here’s the latest view of the tasks you can access.</p>
         </div>
-        <Link className="primary-button" to="/tasks">Open tasks</Link>
+        <div className="dashboard-heading-actions"><button className="quiet-button" onClick={() => void loadSummary()} type="button">Refresh overview</button><Link className="primary-button" to="/tasks">Open tasks</Link></div>
       </div>
 
       {error && <div className="dashboard-error" role="alert"><span>{error}</span><button className="quiet-button" onClick={() => void loadSummary()} type="button">Retry</button></div>}
 
       <div aria-label="Task totals" className="dashboard-metrics">
-        <article className="page-card metric-card"><span>Total tasks</span><strong>{loading ? '—' : summary?.total ?? 0}</strong><small>Tasks visible to your account</small></article>
-        <article className="page-card metric-card metric-pending"><span>Pending</span><strong>{loading ? '—' : counts.PENDING}</strong><small>Waiting to be started</small></article>
-        <article className="page-card metric-card metric-progress"><span>In progress</span><strong>{loading ? '—' : counts.IN_PROGRESS}</strong><small>Currently being worked on</small></article>
-        <article className="page-card metric-card metric-completed"><span>Completed</span><strong>{loading ? '—' : counts.COMPLETED}</strong><small>{completionPercent}% of visible tasks</small></article>
+        <article className="page-card metric-card"><span>Total tasks</span><strong>{loading || error ? '—' : summary?.total ?? 0}</strong><small>Tasks visible to your account</small></article>
+        <article className="page-card metric-card metric-pending"><span>Pending</span><strong>{loading || error ? '—' : counts.PENDING}</strong><small>Waiting to be started</small></article>
+        <article className="page-card metric-card metric-progress"><span>In progress</span><strong>{loading || error ? '—' : counts.IN_PROGRESS}</strong><small>Currently being worked on</small></article>
+        <article className="page-card metric-card metric-completed"><span>Completed</span><strong>{loading || error ? '—' : counts.COMPLETED}</strong><small>{loading || error ? 'Progress unavailable' : `${completionPercent}% of visible tasks`}</small></article>
       </div>
 
       <div className="dashboard-lower-grid">
         <section className="page-card dashboard-recent" aria-labelledby="recent-tasks-heading">
           <div className="dashboard-section-heading"><div><p className="eyebrow">Latest updates</p><h2 id="recent-tasks-heading">Recent tasks</h2></div><Link className="text-link" to="/tasks">View all</Link></div>
-          {loading ? <p className="dashboard-empty" role="status">Loading recent tasks…</p> : summary?.recentTasks.length ? (
+          {loading ? <p className="dashboard-empty" role="status">Loading recent tasks…</p> : error ? <p className="dashboard-empty">Recent tasks are unavailable.</p> : summary?.recentTasks.length ? (
             <ul className="dashboard-task-list">
               {summary.recentTasks.map((task) => (
                 <li key={task.id}>
@@ -84,8 +92,8 @@ export function DashboardPage() {
         <section className="page-card dashboard-progress" aria-labelledby="completion-heading">
           <p className="eyebrow">Progress</p>
           <h2 id="completion-heading">Completion rate</h2>
-          <div aria-label={`${completionPercent}% of tasks completed`} className="progress-track" role="img"><span style={{ width: `${completionPercent}%` }} /></div>
-          <p className="muted-copy">{loading ? 'Calculating progress…' : `${counts.COMPLETED} of ${summary?.total ?? 0} visible tasks completed.`}</p>
+          <div aria-label={loading || error ? 'Completion progress unavailable' : `${completionPercent}% of tasks completed`} className="progress-track" role="img"><span style={{ width: `${completionPercent}%` }} /></div>
+          <p className="muted-copy">{loading ? 'Calculating progress…' : error ? 'Overview unavailable.' : `${counts.COMPLETED} of ${summary?.total ?? 0} visible tasks completed.`}</p>
           <Link className="text-link" to="/tasks">Review your tasks</Link>
         </section>
       </div>

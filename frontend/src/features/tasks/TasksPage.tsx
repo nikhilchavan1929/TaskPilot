@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { useAbility } from '@casl/react';
 import { apiClient } from '../../shared/api/client';
 import type { PaginatedTasks, TaskItem, TaskStatus, UserRecord } from '../../shared/api/types';
@@ -16,6 +16,7 @@ export function TasksPage() {
     taskSubject(user.id, { createdById: user.id }),
   ));
   const [result, setResult] = useState(initialPage);
+  const requestSequence = useRef(0);
   const [users, setUsers] = useState<UserRecord[]>([]);
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
@@ -34,22 +35,26 @@ export function TasksPage() {
   const assignableUsers = users.filter((person) => person.id !== user?.id && person.role.toUpperCase() !== 'ADMIN');
   const currentUserName = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || user?.email || 'you';
 
-  const loadTasks = useCallback(async () => {
+  const loadTasks = useCallback(async (requestedPage = page) => {
+    const sequence = ++requestSequence.current;
     setLoading(true);
     setError('');
     try {
       const { data } = await apiClient.get<PaginatedTasks>('/tasks', {
-        params: { page, limit: 20, search: search || undefined, status: statusFilter || undefined },
+        params: { page: requestedPage, limit: 20, search: search || undefined, status: statusFilter || undefined },
       });
-      setResult(data);
+      if (sequence === requestSequence.current) setResult(data);
     } catch {
-      setError('Could not load tasks. Try again.');
+      if (sequence === requestSequence.current) setError('Could not load tasks. Try again.');
     } finally {
-      setLoading(false);
+      if (sequence === requestSequence.current) setLoading(false);
     }
   }, [page, search, statusFilter]);
 
-  useEffect(() => { void loadTasks(); }, [loadTasks]);
+  useEffect(() => {
+    void loadTasks();
+    return () => { requestSequence.current += 1; };
+  }, [loadTasks]);
 
   useEffect(() => {
     if (!canAssign) return;
@@ -74,7 +79,7 @@ export function TasksPage() {
       setCreateDescription('');
       setCreateOwnerId('');
       setPage(1);
-      await loadTasks();
+      if (page === 1) await loadTasks(1);
     } catch {
       setError('Could not create the task. Check that the owner is still an active user.');
     } finally {
@@ -95,11 +100,10 @@ export function TasksPage() {
       setError('Task title is required.');
       return;
     }
-    const task = result.items.find((item) => item.id === editingId);
-    if (!task) return;
+    if (!editingId) return;
     setError('');
     try {
-      await apiClient.patch(`/tasks/${task.id}`, {
+      await apiClient.patch(`/tasks/${editingId}`, {
         title: editTitle.trim(),
         description: editDescription || null,
         status: editStatus,

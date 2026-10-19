@@ -2,6 +2,8 @@ import { useState, type FormEvent } from 'react';
 import { isAxiosError } from 'axios';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router';
 import { useAuth } from './AuthContext';
+import { createAbilityForUser, taskSubject } from '../../app/ability';
+import type { AuthUser } from '../../shared/api/types';
 
 interface AuthPageProps {
   mode: 'login' | 'register';
@@ -11,20 +13,38 @@ interface RedirectState {
   from?: { pathname?: string; search?: string; hash?: string };
 }
 
-function messageFromError(error: unknown): string {
+export function messageFromError(error: unknown): string {
   if (isAxiosError(error)) {
     const status = error.response?.status;
+    const payload = error.response?.data as { message?: unknown } | undefined;
+    if (Array.isArray(payload?.message)) {
+      const messages = payload.message.filter((message): message is string => typeof message === 'string');
+      if (messages.length > 0) return messages.join(' ');
+    }
+    if (typeof payload?.message === 'string' && payload.message.trim()) return payload.message;
     if (status === 409) return 'An account with this email already exists.';
     if (status === 401) return 'The email or password is incorrect.';
     if (status === 503) return 'Authentication is temporarily unavailable. Try again later.';
     if (status === 429) return 'Too many attempts. Please wait a moment and try again.';
-    if (status && status >= 400 && status < 500) return 'Check the details and try again.';
+    if (status && status >= 400 && status < 500) return `The request could not be completed (${status}). Check the details and try again.`;
   }
   return 'Could not connect to the service. Check that the API is running and try again.';
 }
 
+export function destinationForUser(user: AuthUser | null, intended?: RedirectState['from']) {
+  const ability = createAbilityForUser(user);
+  const canReadTasks = Boolean(user && (
+    ability.can('read', taskSubject(user.id)) ||
+    ability.can('read', taskSubject('', { createdById: user.id }))
+  ));
+  const fallback = canReadTasks ? '/dashboard' : '/profile';
+  if (!intended?.pathname) return fallback;
+  if (!canReadTasks && ['/tasks', '/dashboard'].includes(intended.pathname)) return '/profile';
+  return { pathname: intended.pathname, search: intended.search ?? '', hash: intended.hash ?? '' };
+}
+
 export function AuthPage({ mode }: AuthPageProps) {
-  const { status, login, register } = useAuth();
+  const { user, status, login, register } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [email, setEmail] = useState('');
@@ -33,9 +53,7 @@ export function AuthPage({ mode }: AuthPageProps) {
   const [submitting, setSubmitting] = useState(false);
   const isRegister = mode === 'register';
   const from = (location.state as RedirectState | null)?.from;
-  const destination = from?.pathname
-    ? { pathname: from.pathname, search: from.search ?? '', hash: from.hash ?? '' }
-    : '/tasks';
+  const destination = destinationForUser(user, from);
 
   if (status === 'checking') {
     return <div className="page-card loading-card" role="status">Checking your session…</div>;
@@ -48,9 +66,9 @@ export function AuthPage({ mode }: AuthPageProps) {
     setSubmitting(true);
     try {
       const credentials = { email: email.trim(), password };
-      if (isRegister) await register(credentials);
-      else await login(credentials);
-      await navigate(destination, { replace: true });
+      const authenticatedUser = isRegister ? await register(credentials) : await login(credentials);
+      if (!authenticatedUser) return;
+      await navigate(destinationForUser(authenticatedUser, from), { replace: true });
     } catch (error) {
       setErrorMessage(messageFromError(error));
     } finally {

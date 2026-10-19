@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { isAxiosError } from 'axios';
 import { useAbility } from '@casl/react';
 import { apiClient } from '../../shared/api/client';
 import type { RoleRecord, UserRecord } from '../../shared/api/types';
@@ -15,21 +16,28 @@ export function UsersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [savedId, setSavedId] = useState('');
+  const savedTimer = useRef<number | null>(null);
 
   useEffect(() => {
     let active = true;
-    void Promise.all([
-      apiClient.get<UserRecord[]>('/users'),
-      canManageUsers ? apiClient.get<RoleRecord[]>('/roles') : Promise.resolve({ data: [] as RoleRecord[] }),
-    ]).then(([userResponse, roleResponse]) => {
+    setLoading(true);
+    setError('');
+    const usersRequest = apiClient.get<UserRecord[]>('/users').then(({ data }) => {
       if (!active) return;
-      setUsers(userResponse.data);
-      setRoles(roleResponse.data);
-      setSelectedRoles(Object.fromEntries(userResponse.data.map((user) => [user.id, user.customRoleId ?? user.role])));
-    }).catch(() => { if (active) setError('Could not load the user list.'); })
-      .finally(() => { if (active) setLoading(false); });
+      setUsers(data);
+      setSelectedRoles(Object.fromEntries(data.map((person) => [person.id, person.customRoleId ?? person.role])));
+    }).catch(() => { if (active) setError('Could not load the user list.'); });
+    const rolesRequest = canManageUsers
+      ? apiClient.get<RoleRecord[]>('/roles').then(({ data }) => { if (active) setRoles(data); })
+        .catch(() => { if (active) setError('Users loaded, but roles could not be loaded.'); })
+      : Promise.resolve();
+    void Promise.all([usersRequest, rolesRequest]).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [canManageUsers]);
+
+  useEffect(() => () => {
+    if (savedTimer.current !== null) window.clearTimeout(savedTimer.current);
+  }, []);
 
   async function saveRole(user: UserRecord) {
     const selection = selectedRoles[user.id] ?? user.role;
@@ -54,8 +62,12 @@ export function UsersPage() {
         customRole: custom ? { id: custom.id, name: custom.name } : null,
         roleName: selectedRole.name,
       } : item));
+      if (savedTimer.current !== null) window.clearTimeout(savedTimer.current);
       setSavedId(user.id);
-      window.setTimeout(() => setSavedId(''), 1800);
+      savedTimer.current = window.setTimeout(() => {
+        setSavedId('');
+        savedTimer.current = null;
+      }, 1800);
     } catch {
       setError('Could not update that user’s role.');
     }
@@ -67,8 +79,17 @@ export function UsersPage() {
     try {
       await apiClient.delete(`/users/${user.id}`);
       setUsers((current) => current.filter((item) => item.id !== user.id));
-    } catch {
-      setError('Could not delete that account. The last administrator cannot be deleted.');
+    } catch (error) {
+      if (isAxiosError<{ message?: string | string[] }>(error)) {
+        const status = error.response?.status;
+        const serverMessage = error.response?.data?.message;
+        const message = Array.isArray(serverMessage) ? serverMessage.join(' ') : serverMessage;
+        if (typeof message === 'string' && message.trim()) setError(message);
+        else if (status === 401) setError('Your session expired. Sign in again and retry.');
+        else if (status === 403) setError('You do not have permission to delete this account.');
+        else if (status === 404) setError('This account no longer exists. Reload the user list.');
+        else setError('Could not delete that account. Try again.');
+      } else setError('Could not delete that account. Try again.');
     }
   }
 

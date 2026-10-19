@@ -52,7 +52,7 @@ export class TasksService {
       this.prisma.task.findMany({
         where,
         include: { user: { select: { id: true, email: true, firstName: true, lastName: true } } },
-        orderBy: { updatedAt: 'desc' },
+        orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
         take: 5,
       }),
     ]);
