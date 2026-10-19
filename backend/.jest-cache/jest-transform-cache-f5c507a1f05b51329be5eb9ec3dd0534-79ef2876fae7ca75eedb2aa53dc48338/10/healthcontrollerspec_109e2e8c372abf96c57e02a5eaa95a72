@@ -1,0 +1,11 @@
+b5a941eefa39f98d0e8e415e16227ae6
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const health_controller_1 = require("./health.controller");
+describe('HealthController', () => {
+    it('returns an ok status', () => {
+        const controller = new health_controller_1.HealthController();
+        expect(controller.getHealth()).toEqual({ status: 'ok' });
+    });
+});
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiRDpcXHdvcmtzcGFjZVxcdG9kby1hc3NpZ25tZW50XFxiYWNrZW5kXFxzcmNcXGhlYWx0aC5jb250cm9sbGVyLnNwZWMudHMiLCJtYXBwaW5ncyI6Ijs7QUFBQSwyREFBdUQ7QUFFdkQsUUFBUSxDQUFDLGtCQUFrQixFQUFFLEdBQUcsRUFBRTtJQUNoQyxFQUFFLENBQUMsc0JBQXNCLEVBQUUsR0FBRyxFQUFFO1FBQzlCLE1BQU0sVUFBVSxHQUFHLElBQUksb0NBQWdCLEVBQUUsQ0FBQztRQUUxQyxNQUFNLENBQUMsVUFBVSxDQUFDLFNBQVMsRUFBRSxDQUFDLENBQUMsT0FBTyxDQUFDLEVBQUUsTUFBTSxFQUFFLElBQUksRUFBRSxDQUFDLENBQUM7SUFDM0QsQ0FBQyxDQUFDLENBQUM7QUFDTCxDQUFDLENBQUMsQ0FBQyIsIm5hbWVzIjpbXSwic291cmNlcyI6WyJEOlxcd29ya3NwYWNlXFx0b2RvLWFzc2lnbm1lbnRcXGJhY2tlbmRcXHNyY1xcaGVhbHRoLmNvbnRyb2xsZXIuc3BlYy50cyJdLCJzb3VyY2VzQ29udGVudCI6WyJpbXBvcnQgeyBIZWFsdGhDb250cm9sbGVyIH0gZnJvbSAnLi9oZWFsdGguY29udHJvbGxlcic7XG5cbmRlc2NyaWJlKCdIZWFsdGhDb250cm9sbGVyJywgKCkgPT4ge1xuICBpdCgncmV0dXJucyBhbiBvayBzdGF0dXMnLCAoKSA9PiB7XG4gICAgY29uc3QgY29udHJvbGxlciA9IG5ldyBIZWFsdGhDb250cm9sbGVyKCk7XG5cbiAgICBleHBlY3QoY29udHJvbGxlci5nZXRIZWFsdGgoKSkudG9FcXVhbCh7IHN0YXR1czogJ29rJyB9KTtcbiAgfSk7XG59KTtcclxuIl0sInZlcnNpb24iOjN9

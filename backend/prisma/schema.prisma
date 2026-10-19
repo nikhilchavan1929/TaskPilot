@@ -1,0 +1,109 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  USER
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+}
+
+model User {
+  id           String          @id @default(cuid())
+  email        String          @unique
+  passwordHash String
+  role         UserRole        @default(USER)
+  customRoleId String?
+  customRole   Role?           @relation("CustomRoleUsers", fields: [customRoleId], references: [id], onDelete: SetNull)
+  firstName    String?
+  lastName     String?
+  birthDate    DateTime?
+  avatarUrl    String?
+  tasks        Task[]          @relation("TaskOwner")
+  createdTasks Task[]          @relation("TaskCreator")
+  sessions     RefreshSession[]
+  notifications Notification[]
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  @@index([role, customRoleId])
+}
+
+model Role {
+  id          String           @id @default(cuid())
+  name        String           @unique
+  description String?
+  isSystem    Boolean          @default(false)
+  users       User[]           @relation("CustomRoleUsers")
+  permissions RolePermission[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+model RolePermission {
+  id         String   @id @default(cuid())
+  roleId     String
+  role       Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  action     String
+  subject    String
+  conditions String?
+  createdAt  DateTime @default(now())
+
+  @@unique([roleId, action, subject])
+  @@index([roleId])
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, readAt, createdAt])
+}
+
+model Task {
+  id          String     @id @default(cuid())
+  title       String
+  description String?
+  status      TaskStatus @default(PENDING)
+  userId      String
+  user        User       @relation("TaskOwner", fields: [userId], references: [id], onDelete: Cascade)
+  createdById String?
+  createdBy   User?      @relation("TaskCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  dueAt       DateTime?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([userId, status])
+  @@index([userId, createdAt])
+}
+
+model RefreshSession {
+  id        String    @id
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
+}
+

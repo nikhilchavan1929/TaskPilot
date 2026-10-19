@@ -1,0 +1,15 @@
+node_modules
+dist
+coverage
+.nyc_output
+.env
+.env.*
+!.env.example
+dev.db
+dev.db-*
+*.sqlite
+*.sqlite3
+*.key
+*.pem
+*credential*
+*service-account*
