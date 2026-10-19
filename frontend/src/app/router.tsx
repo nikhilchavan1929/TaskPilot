@@ -8,6 +8,7 @@ import { PermissionRoute, ProtectedRoute } from '../features/auth/ProtectedRoute
 import { ProfilePage } from '../features/profile/ProfilePage';
 import { UsersPage } from '../features/users/UsersPage';
 import { RolesPage } from '../features/roles/RolesPage';
+import { DashboardPage } from '../features/dashboard/DashboardPage';
 import { taskSubject } from './ability';
 import { useAuth } from '../features/auth/AuthContext';
 
@@ -17,6 +18,14 @@ function ProtectedTasksPage() {
     ability.can('read', taskSubject(user.id)) ||
     ability.can('read', taskSubject('', { createdById: user.id }))
   }><TasksPage /></PermissionRoute> : null;
+}
+
+function ProtectedDashboardPage() {
+  const { user } = useAuth();
+  return user ? <PermissionRoute check={(ability) =>
+    ability.can('read', taskSubject(user.id)) ||
+    ability.can('read', taskSubject('', { createdById: user.id }))
+  }><DashboardPage /></PermissionRoute> : null;
 }
 
 export const router = createBrowserRouter([
@@ -30,6 +39,7 @@ export const router = createBrowserRouter([
         element: <ProtectedRoute />,
         children: [
           { path: 'tasks', element: <ProtectedTasksPage /> },
+          { path: 'dashboard', element: <ProtectedDashboardPage /> },
           { path: 'profile', element: <ProfilePage /> },
           { path: 'users', element: <PermissionRoute check={(ability) => ability.can('read', 'User')}><UsersPage /></PermissionRoute> },
           { path: 'roles', element: <PermissionRoute check={(ability) => ability.can('manage', 'Role')}><RolesPage /></PermissionRoute> },

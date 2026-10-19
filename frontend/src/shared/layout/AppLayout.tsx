@@ -17,7 +17,7 @@ export function AppLayout() {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [logoutError, setLogoutError] = useState(false);
   const [notifications, setNotifications] = useState<NotificationResponse>({ items: [], unreadCount: 0 });
-  const canReadTasks = Boolean(user && ability.can('read', taskSubject(user.id)));
+  const canReadTasks = Boolean(user && (ability.can('read', taskSubject(user.id)) || ability.can('read', taskSubject('', { createdById: user.id }))));
   const canReadUsers = ability.can('read', 'User');
   const canManageRoles = ability.can('manage', 'Role');
 
@@ -126,6 +126,9 @@ export function AppLayout() {
             <NavLink to="/" end className={({ isActive }) => isActive ? 'side-link active' : 'side-link'}>
               <span aria-hidden="true">⌂</span> Overview
             </NavLink>
+            {canReadTasks && <NavLink to="/dashboard" className={({ isActive }) => isActive ? 'side-link active' : 'side-link'}>
+              <span aria-hidden="true">▦</span> Dashboard
+            </NavLink>}
             {canReadTasks && <NavLink to="/tasks" className={({ isActive }) => isActive ? 'side-link active' : 'side-link'}>
               <span aria-hidden="true">☷</span> Tasks
             </NavLink>}

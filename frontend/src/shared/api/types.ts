@@ -74,6 +74,12 @@ export interface PaginatedTasks {
   pageCount: number;
 }
 
+export interface TaskDashboardSummary {
+  total: number;
+  counts: Record<TaskStatus, number>;
+  recentTasks: TaskItem[];
+}
+
 export interface NotificationItem {
   id: string;
   title: string;

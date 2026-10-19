@@ -13,7 +13,7 @@ export function HomePage() {
           {user ? 'Your account is ready. Continue to your personal task workspace.' : 'Sign in or create an account to access your personal task workspace.'}
         </p>
         <div className="welcome-actions">
-          <Link className="primary-button" to={user ? '/tasks' : '/login'}>{user ? 'Open tasks' : 'Sign in to continue'}</Link>
+          <Link className="primary-button" to={user ? '/dashboard' : '/login'}>{user ? 'Open dashboard' : 'Sign in to continue'}</Link>
           {!user && status !== 'checking' && <Link className="text-link" to="/register">Create account</Link>}
           <HealthPanel />
         </div>
