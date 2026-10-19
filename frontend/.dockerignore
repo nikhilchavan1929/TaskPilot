@@ -1,0 +1,11 @@
+node_modules
+dist
+.vite
+coverage
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*credential*
+*service-account*
