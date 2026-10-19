@@ -3,29 +3,30 @@ import { apiClient } from '../../shared/api/client';
 import type { UserProfile } from '../../shared/api/types';
 import { useAuth } from '../auth/AuthContext';
 
-const emptyProfile: UserProfile = {
-  id: '', email: '', role: '', firstName: '', lastName: '', birthDate: null, avatarUrl: null,
-};
-
 export function ProfilePage() {
   const { updateProfile } = useAuth();
-  const [profile, setProfile] = useState<UserProfile>(emptyProfile);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
 
   useEffect(() => {
     let active = true;
+    setLoading(true);
+    setLoadFailed(false);
     void apiClient.get<UserProfile>('/users/me')
       .then(({ data }) => { if (active) setProfile(data); })
-      .catch(() => { if (active) setError('Could not load your profile. Try again.'); })
+      .catch(() => { if (active) setLoadFailed(true); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, []);
+  }, [reloadKey]);
 
   async function saveProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!profile) return;
     setSaving(true);
     setNotice('');
     setError('');
@@ -47,7 +48,7 @@ export function ProfilePage() {
   }
 
   function change(field: 'firstName' | 'lastName' | 'birthDate' | 'avatarUrl', value: string) {
-    setProfile((current) => ({ ...current, [field]: value || null }));
+    setProfile((current) => current ? { ...current, [field]: value || null } : current);
   }
 
   return (
@@ -55,7 +56,12 @@ export function ProfilePage() {
       <p className="eyebrow">Account</p>
       <h1>My profile</h1>
       <p className="muted-copy">Manage the personal details shown in your workspace.</p>
-      {loading ? <p role="status">Loading profile…</p> : (
+      {loading ? <p role="status">Loading profile…</p> : loadFailed ? (
+        <div role="alert">
+          <p className="form-error">Could not load your profile. Your changes have not been saved.</p>
+          <button className="quiet-button" onClick={() => setReloadKey((key) => key + 1)} type="button">Try again</button>
+        </div>
+      ) : profile ? (
         <form className="profile-form" onSubmit={saveProfile}>
           <div className="profile-preview">
             {profile.avatarUrl ? <img src={profile.avatarUrl} alt="Profile preview" /> : <span aria-hidden="true">{profile.firstName?.[0] || profile.email[0] || '?'}</span>}
@@ -75,7 +81,7 @@ export function ProfilePage() {
           {notice && <p className="success-message" role="status">{notice}</p>}
           <button className="primary-button submit-button" disabled={saving} type="submit">{saving ? 'Saving…' : 'Save profile'}</button>
         </form>
-      )}
+      ) : null}
     </section>
   );
 }

@@ -8,7 +8,7 @@ interface AuthPageProps {
 }
 
 interface RedirectState {
-  from?: { pathname?: string };
+  from?: { pathname?: string; search?: string; hash?: string };
 }
 
 function messageFromError(error: unknown): string {
@@ -17,6 +17,7 @@ function messageFromError(error: unknown): string {
     if (status === 409) return 'An account with this email already exists.';
     if (status === 401) return 'The email or password is incorrect.';
     if (status === 503) return 'Authentication is temporarily unavailable. Try again later.';
+    if (status === 429) return 'Too many attempts. Please wait a moment and try again.';
     if (status && status >= 400 && status < 500) return 'Check the details and try again.';
   }
   return 'Could not connect to the service. Check that the API is running and try again.';
@@ -31,7 +32,10 @@ export function AuthPage({ mode }: AuthPageProps) {
   const [errorMessage, setErrorMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const isRegister = mode === 'register';
-  const destination = (location.state as RedirectState | null)?.from?.pathname || '/tasks';
+  const from = (location.state as RedirectState | null)?.from;
+  const destination = from?.pathname
+    ? { pathname: from.pathname, search: from.search ?? '', hash: from.hash ?? '' }
+    : '/tasks';
 
   if (status === 'checking') {
     return <div className="page-card loading-card" role="status">Checking your session…</div>;

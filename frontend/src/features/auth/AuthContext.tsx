@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -44,6 +45,7 @@ function restoreSession(): Promise<AuthResponse | null> {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [status, setStatus] = useState<AuthStatus>('checking');
+  const authOperation = useRef(0);
 
   const applyAuth = useCallback((auth: AuthResponse) => {
     setAccessToken(auth.accessToken);
@@ -59,8 +61,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let active = true;
+    const operation = authOperation.current;
     void restoreSession().then((auth) => {
-      if (!active) return;
+      if (!active || operation !== authOperation.current) return;
       if (auth) applyAuth(auth);
       else clearAuth();
     });
@@ -74,21 +77,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [applyAuth, clearAuth]);
 
   const login = useCallback(async (credentials: Credentials) => {
+    const operation = ++authOperation.current;
     const { data } = await apiClient.post<AuthResponse>('/auth/login', credentials);
-    applyAuth(data);
+    if (operation === authOperation.current) applyAuth(data);
   }, [applyAuth]);
 
   const register = useCallback(async (credentials: Credentials) => {
+    const operation = ++authOperation.current;
     const { data } = await apiClient.post<AuthResponse>('/auth/register', credentials);
-    applyAuth(data);
+    if (operation === authOperation.current) applyAuth(data);
   }, [applyAuth]);
 
   const logout = useCallback(async () => {
-    try {
-      await apiClient.post('/auth/logout');
-    } finally {
-      clearAuth();
-    }
+    ++authOperation.current;
+    clearAuth();
+    await apiClient.post('/auth/logout');
   }, [clearAuth]);
 
   const updateProfile = useCallback((profile: Pick<AuthUser, 'firstName' | 'lastName' | 'avatarUrl'>) => {

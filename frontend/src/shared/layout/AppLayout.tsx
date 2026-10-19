@@ -15,10 +15,20 @@ export function AppLayout() {
   const { user, status, logout } = useAuth();
   const ability = useAbility<TodoAbility>();
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [logoutError, setLogoutError] = useState(false);
   const [notifications, setNotifications] = useState<NotificationResponse>({ items: [], unreadCount: 0 });
   const canReadTasks = Boolean(user && ability.can('read', taskSubject(user.id)));
   const canReadUsers = ability.can('read', 'User');
   const canManageRoles = ability.can('manage', 'Role');
+
+  async function signOut() {
+    setLogoutError(false);
+    try {
+      await logout();
+    } catch {
+      setLogoutError(true);
+    }
+  }
 
   useEffect(() => {
     let active = true;
@@ -99,9 +109,13 @@ export function AppLayout() {
                 )}
                 <span className="profile-name">{user.firstName || user.lastName ? `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() : user.email}</span>
               </Link>
-              <button className="quiet-button" onClick={() => void logout().catch(() => undefined)} type="button">Sign out</button>
+              <button className="quiet-button" onClick={() => void signOut()} type="button">Sign out</button>
             </>
           ) : <NavLink className="text-link" to="/login">Sign in</NavLink>}
+          {logoutError && <p className="form-error" role="alert">
+            You were signed out here, but the server could not end your session.{' '}
+            <button className="text-link" onClick={() => void signOut()} type="button">Retry sign out</button>
+          </p>}
         </div>
       </header>
 
