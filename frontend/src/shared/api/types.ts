@@ -26,6 +26,15 @@ export interface AuthResponse {
 }
 
 export type TaskStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED';
+export type TaskActivityAction = 'CREATED' | 'UPDATED' | 'STATUS_CHANGED' | 'COMPLETED' | 'REASSIGNED';
+
+export interface TaskActivityItem {
+  id: string;
+  action: TaskActivityAction;
+  summary: string;
+  createdAt: string;
+  actor: Pick<AuthUser, 'id' | 'firstName' | 'lastName'> | null;
+}
 
 export interface TaskItem {
   id: string;

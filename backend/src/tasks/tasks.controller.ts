@@ -17,6 +17,11 @@ export class TasksController {
     return this.tasksService.list(user, query);
   }
 
+  @Get(':id/activity')
+  activity(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.tasksService.activity(user, id);
+  }
+
   @Post()
   create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateTaskDto) {
     return this.tasksService.create(user, dto);

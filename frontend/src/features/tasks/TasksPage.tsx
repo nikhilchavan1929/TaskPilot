@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useAbility } from '@casl/react';
 import { apiClient } from '../../shared/api/client';
-import type { PaginatedTasks, TaskItem, TaskStatus, UserRecord } from '../../shared/api/types';
+import type { PaginatedTasks, TaskActivityItem, TaskItem, TaskStatus, UserRecord } from '../../shared/api/types';
 import { taskSubject, type TodoAbility } from '../../app/ability';
 import { useAuth } from '../auth/AuthContext';
 
@@ -31,6 +31,10 @@ export function TasksPage() {
   const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
   const [editStatus, setEditStatus] = useState<TaskStatus>('PENDING');
+  const [activityByTask, setActivityByTask] = useState<Record<string, TaskActivityItem[]>>({});
+  const [expandedActivity, setExpandedActivity] = useState<Record<string, boolean>>({});
+  const [activityLoading, setActivityLoading] = useState<Record<string, boolean>>({});
+  const [activityErrors, setActivityErrors] = useState<Record<string, string>>({});
   const assignableUsers = users.filter((person) => person.id !== user?.id && person.role.toUpperCase() !== 'ADMIN');
   const currentUserName = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || user?.email || 'you';
 
@@ -131,6 +135,25 @@ export function TasksPage() {
     }
   }
 
+  async function loadActivity(taskId: string) {
+    setActivityLoading((current) => ({ ...current, [taskId]: true }));
+    setActivityErrors((current) => ({ ...current, [taskId]: '' }));
+    try {
+      const { data } = await apiClient.get<TaskActivityItem[]>(`/tasks/${taskId}/activity`);
+      setActivityByTask((current) => ({ ...current, [taskId]: data }));
+    } catch {
+      setActivityErrors((current) => ({ ...current, [taskId]: 'Could not load activity. Try again.' }));
+    } finally {
+      setActivityLoading((current) => ({ ...current, [taskId]: false }));
+    }
+  }
+
+  function toggleActivity(taskId: string) {
+    const opening = !expandedActivity[taskId];
+    setExpandedActivity((current) => ({ ...current, [taskId]: opening }));
+    if (opening && !Object.hasOwn(activityByTask, taskId)) void loadActivity(taskId);
+  }
+
   function applyFilters(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setPage(1);
@@ -171,6 +194,7 @@ export function TasksPage() {
           const canEdit = ability.can('update', subjectForTask);
           const canComplete = ability.can('complete', subjectForTask) && task.status !== 'COMPLETED';
           const canDelete = ability.can('delete', subjectForTask);
+          const canReadActivity = ability.can('read', subjectForTask);
           const assignedName = [task.user?.firstName, task.user?.lastName].filter(Boolean).join(' ') || task.user?.email;
           return <article className="task-card page-card" key={task.id}>
             {editingId === task.id ? (
@@ -191,6 +215,33 @@ export function TasksPage() {
               </div>
               {task.description && <p className="muted-copy task-description">{task.description}</p>}
               <div className="task-meta"><span>{assignedName ? `Assigned to ${assignedName}` : 'Assigned task'}</span><span>Created {new Date(task.createdAt).toLocaleDateString()}</span></div>
+              {canReadActivity && <>
+                <button
+                  aria-controls={`task-activity-${task.id}`}
+                  aria-expanded={Boolean(expandedActivity[task.id])}
+                  className="quiet-button task-activity-toggle"
+                  onClick={() => toggleActivity(task.id)}
+                  type="button"
+                >
+                  {expandedActivity[task.id] ? 'Hide activity' : 'View activity'}
+                </button>
+                {expandedActivity[task.id] && <section aria-label={`Activity for ${task.title}`} className="task-activity" id={`task-activity-${task.id}`}>
+                  <h3>Task activity</h3>
+                  {activityLoading[task.id] ? <p role="status">Loading activity…</p> : activityErrors[task.id] ? (
+                    <div><p className="form-error" role="alert">{activityErrors[task.id]}</p><button className="quiet-button" onClick={() => void loadActivity(task.id)} type="button">Retry</button></div>
+                  ) : activityByTask[task.id]?.length ? (
+                    <ol className="task-activity-list">
+                      {activityByTask[task.id].map((activity) => {
+                        const actorName = [activity.actor?.firstName, activity.actor?.lastName].filter(Boolean).join(' ') || 'A team member';
+                        return <li key={activity.id}>
+                          <p><strong>{actorName}</strong> {activity.summary}</p>
+                          <time dateTime={activity.createdAt}>{new Date(activity.createdAt).toLocaleString()}</time>
+                        </li>;
+                      })}
+                    </ol>
+                  ) : <p className="muted-copy">No activity recorded yet.</p>}
+                </section>}
+              </>}
             </>}
           </article>;
         })}

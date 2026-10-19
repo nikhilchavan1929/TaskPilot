@@ -70,16 +70,22 @@ export class TasksService {
     if (dto.userId && user.role !== 'ADMIN' && owner.role === 'ADMIN') {
       throw new ForbiddenException('Tasks cannot be assigned to an administrator.');
     }
-    const task = await this.prisma.task.create({
-      data: {
-        title: dto.title.trim(),
-        description: dto.description?.trim() || null,
-        status: dto.status,
-        dueAt: dto.dueAt ? new Date(dto.dueAt) : null,
-        userId: ownerId,
-        createdById: user.id,
-      },
-      include: { user: { select: { id: true, email: true, firstName: true, lastName: true } } },
+    const task = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.task.create({
+        data: {
+          title: dto.title.trim(),
+          description: dto.description?.trim() || null,
+          status: dto.status,
+          dueAt: dto.dueAt ? new Date(dto.dueAt) : null,
+          userId: ownerId,
+          createdById: user.id,
+        },
+        include: { user: { select: { id: true, email: true, firstName: true, lastName: true } } },
+      });
+      await tx.taskActivity.create({
+        data: { taskId: created.id, actorId: user.id, action: 'CREATED', summary: 'Created this task' },
+      });
+      return created;
     });
     if (ownerId !== user.id) await this.notifyAssignment(ownerId, task.title);
     return task;
@@ -104,7 +110,15 @@ export class TasksService {
         providedFields[0] === 'status' &&
         dto.status === 'COMPLETED';
       if (!onlyCompleting || !ability.can('complete', taskSubject)) throw new ForbiddenException();
-      const completed = await this.prisma.task.update({ where: { id }, data: { status: 'COMPLETED' } });
+      const completed = await this.prisma.$transaction(async (tx) => {
+        const result = await tx.task.update({ where: { id }, data: { status: 'COMPLETED' } });
+        if (task.status !== 'COMPLETED') {
+          await tx.taskActivity.create({
+            data: { taskId: id, actorId: user.id, action: 'COMPLETED', summary: 'Marked this task complete' },
+          });
+        }
+        return result;
+      });
       if (task.status !== 'COMPLETED' && task.createdById && task.createdById !== user.id) {
         await this.notifyCompletion(task.createdById, task.title);
       }
@@ -119,22 +133,74 @@ export class TasksService {
         throw new ForbiddenException('Tasks cannot be assigned to an administrator.');
       }
     }
-    const updated = await this.prisma.task.update({
-      where: { id },
-      data: {
-        ...(dto.title !== undefined ? { title: dto.title.trim() } : {}),
-        ...(dto.description !== undefined ? { description: dto.description?.trim() || null } : {}),
-        ...(dto.status !== undefined ? { status: dto.status } : {}),
-        ...(dto.dueAt !== undefined ? { dueAt: dto.dueAt ? new Date(dto.dueAt) : null } : {}),
-        ...(dto.userId !== undefined ? { userId: dto.userId } : {}),
-      },
-      include: { user: { select: { id: true, email: true, firstName: true, lastName: true } } },
+    const changedFields: string[] = [];
+    if (dto.title !== undefined && dto.title.trim() !== task.title) changedFields.push('title');
+    if (dto.description !== undefined && (dto.description?.trim() || null) !== task.description) changedFields.push('description');
+    if (dto.status !== undefined && dto.status !== task.status) changedFields.push('status');
+    if (dto.dueAt !== undefined) {
+      const nextDueAt = dto.dueAt ? new Date(dto.dueAt).getTime() : null;
+      const currentDueAt = task.dueAt?.getTime() ?? null;
+      if (nextDueAt !== currentDueAt) changedFields.push('due date');
+    }
+    if (dto.userId !== undefined && dto.userId !== task.userId) changedFields.push('assignee');
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const result = await tx.task.update({
+        where: { id },
+        data: {
+          ...(dto.title !== undefined ? { title: dto.title.trim() } : {}),
+          ...(dto.description !== undefined ? { description: dto.description?.trim() || null } : {}),
+          ...(dto.status !== undefined ? { status: dto.status } : {}),
+          ...(dto.dueAt !== undefined ? { dueAt: dto.dueAt ? new Date(dto.dueAt) : null } : {}),
+          ...(dto.userId !== undefined ? { userId: dto.userId } : {}),
+        },
+        include: { user: { select: { id: true, email: true, firstName: true, lastName: true } } },
+      });
+      if (changedFields.length > 0) {
+        const action =
+          dto.status === 'COMPLETED' && task.status !== 'COMPLETED' ? 'COMPLETED'
+            : dto.userId !== undefined && dto.userId !== task.userId ? 'REASSIGNED'
+              : dto.status !== undefined && dto.status !== task.status ? 'STATUS_CHANGED'
+                : 'UPDATED';
+        const summary = action === 'COMPLETED'
+          ? 'Marked this task complete'
+          : action === 'REASSIGNED'
+            ? 'Reassigned this task'
+            : action === 'STATUS_CHANGED'
+              ? `Changed status from ${task.status} to ${dto.status}`
+              : `Updated ${changedFields.join(', ')}`;
+        await tx.taskActivity.create({ data: { taskId: id, actorId: user.id, action, summary } });
+      }
+      return result;
     });
     if (dto.userId && dto.userId !== task.userId) await this.notifyAssignment(dto.userId, updated.title);
     if (dto.status === 'COMPLETED' && task.status !== 'COMPLETED' && task.createdById && task.createdById !== user.id) {
       await this.notifyCompletion(task.createdById, updated.title);
     }
     return updated;
+  }
+
+  async activity(user: AuthenticatedUser, id: string) {
+    const task = await this.prisma.task.findUnique({ where: { id } });
+    if (!task) throw new NotFoundException('Task was not found.');
+
+    const ability = await this.abilityFactory.createForUser(user);
+    if (!ability.can('read', subject('Task', task) as unknown as 'Task')) {
+      throw new ForbiddenException();
+    }
+
+    return this.prisma.taskActivity.findMany({
+      where: { taskId: id },
+      select: {
+        id: true,
+        action: true,
+        summary: true,
+        createdAt: true,
+        actor: { select: { id: true, firstName: true, lastName: true } },
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: 50,
+    });
   }
 
   async remove(user: AuthenticatedUser, id: string): Promise<{ status: 'ok' }> {
