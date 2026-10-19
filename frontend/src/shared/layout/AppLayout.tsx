@@ -31,6 +31,10 @@ export function AppLayout() {
   }
 
   useEffect(() => {
+    if (user) setLogoutError(false);
+  }, [user?.id]);
+
+  useEffect(() => {
     let active = true;
     if (!user) {
       setNotifications({ items: [], unreadCount: 0 });

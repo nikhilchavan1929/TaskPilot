@@ -46,14 +46,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [status, setStatus] = useState<AuthStatus>('checking');
   const authOperation = useRef(0);
+  const activeAccessToken = useRef<string | null>(null);
 
   const applyAuth = useCallback((auth: AuthResponse) => {
+    activeAccessToken.current = auth.accessToken;
     setAccessToken(auth.accessToken);
     setUser(auth.user);
     setStatus('authenticated');
   }, []);
 
   const clearAuth = useCallback(() => {
+    activeAccessToken.current = null;
     setAccessToken(null);
     setUser(null);
     setStatus('anonymous');
@@ -68,7 +71,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       else clearAuth();
     });
 
-    const onExpired = () => clearAuth();
+    const onExpired = (event: Event) => {
+      const expiredToken = (event as CustomEvent<{ accessToken?: string }>).detail?.accessToken;
+      if (expiredToken && activeAccessToken.current !== expiredToken) return;
+      ++authOperation.current;
+      clearAuth();
+    };
     window.addEventListener('todo:session-expired', onExpired);
     return () => {
       active = false;
@@ -90,8 +98,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async () => {
     ++authOperation.current;
-    clearAuth();
-    await apiClient.post('/auth/logout');
+    try {
+      await apiClient.post('/auth/logout');
+    } finally {
+      clearAuth();
+    }
   }, [clearAuth]);
 
   const updateProfile = useCallback((profile: Pick<AuthUser, 'firstName' | 'lastName' | 'avatarUrl'>) => {

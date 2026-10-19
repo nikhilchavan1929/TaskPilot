@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { useAbility } from '@casl/react';
 import { apiClient } from '../../shared/api/client';
 import type { PaginatedTasks, TaskActivityItem, TaskItem, TaskStatus, UserRecord } from '../../shared/api/types';
@@ -35,8 +35,22 @@ export function TasksPage() {
   const [expandedActivity, setExpandedActivity] = useState<Record<string, boolean>>({});
   const [activityLoading, setActivityLoading] = useState<Record<string, boolean>>({});
   const [activityErrors, setActivityErrors] = useState<Record<string, string>>({});
+  const expandedActivityRef = useRef<Record<string, boolean>>({});
   const assignableUsers = users.filter((person) => person.id !== user?.id && person.role.toUpperCase() !== 'ADMIN');
   const currentUserName = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || user?.email || 'you';
+
+  const loadActivity = useCallback(async (taskId: string) => {
+    setActivityLoading((current) => ({ ...current, [taskId]: true }));
+    setActivityErrors((current) => ({ ...current, [taskId]: '' }));
+    try {
+      const { data } = await apiClient.get<TaskActivityItem[]>(`/tasks/${taskId}/activity`);
+      setActivityByTask((current) => ({ ...current, [taskId]: data }));
+    } catch {
+      setActivityErrors((current) => ({ ...current, [taskId]: 'Could not load activity. Try again.' }));
+    } finally {
+      setActivityLoading((current) => ({ ...current, [taskId]: false }));
+    }
+  }, []);
 
   const loadTasks = useCallback(async () => {
     setLoading(true);
@@ -46,12 +60,15 @@ export function TasksPage() {
         params: { page, limit: 20, search: search || undefined, status: statusFilter || undefined },
       });
       setResult(data);
+      await Promise.all(data.items
+        .filter((task) => expandedActivityRef.current[task.id])
+        .map((task) => loadActivity(task.id)));
     } catch {
       setError('Could not load tasks. Try again.');
     } finally {
       setLoading(false);
     }
-  }, [page, search, statusFilter]);
+  }, [loadActivity, page, search, statusFilter]);
 
   useEffect(() => { void loadTasks(); }, [loadTasks]);
 
@@ -135,23 +152,11 @@ export function TasksPage() {
     }
   }
 
-  async function loadActivity(taskId: string) {
-    setActivityLoading((current) => ({ ...current, [taskId]: true }));
-    setActivityErrors((current) => ({ ...current, [taskId]: '' }));
-    try {
-      const { data } = await apiClient.get<TaskActivityItem[]>(`/tasks/${taskId}/activity`);
-      setActivityByTask((current) => ({ ...current, [taskId]: data }));
-    } catch {
-      setActivityErrors((current) => ({ ...current, [taskId]: 'Could not load activity. Try again.' }));
-    } finally {
-      setActivityLoading((current) => ({ ...current, [taskId]: false }));
-    }
-  }
-
   function toggleActivity(taskId: string) {
     const opening = !expandedActivity[taskId];
+    expandedActivityRef.current = { ...expandedActivityRef.current, [taskId]: opening };
     setExpandedActivity((current) => ({ ...current, [taskId]: opening }));
-    if (opening && !Object.hasOwn(activityByTask, taskId)) void loadActivity(taskId);
+    if (opening) void loadActivity(taskId);
   }
 
   function applyFilters(event: FormEvent<HTMLFormElement>) {

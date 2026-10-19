@@ -11,13 +11,22 @@ interface RedirectState {
   from?: { pathname?: string; search?: string; hash?: string };
 }
 
-function messageFromError(error: unknown): string {
+export function messageFromError(error: unknown): string {
   if (isAxiosError(error)) {
     const status = error.response?.status;
     if (status === 409) return 'An account with this email already exists.';
     if (status === 401) return 'The email or password is incorrect.';
     if (status === 503) return 'Authentication is temporarily unavailable. Try again later.';
     if (status === 429) return 'Too many attempts. Please wait a moment and try again.';
+    if (status === 400) {
+      const payload = error.response?.data as { message?: unknown } | undefined;
+      if (Array.isArray(payload?.message)) {
+        const messages = payload.message.filter((message): message is string => typeof message === 'string');
+        if (messages.length > 0) return messages.join(' ');
+      }
+      if (typeof payload?.message === 'string') return payload.message;
+      return 'Please check the form details and try again.';
+    }
     if (status && status >= 400 && status < 500) return 'Check the details and try again.';
   }
   return 'Could not connect to the service. Check that the API is running and try again.';
